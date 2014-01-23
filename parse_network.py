@@ -4,6 +4,7 @@ import time
 import sys, os
 import itertools
 import numpy
+from collections import deque
 
 #start_date = 1094601600 #First day of classes in 04-05 academic year
 #end_date = 1133740800 #Last day of classes in 04-05 academic year
@@ -195,9 +196,9 @@ def createFriendshipDataset(networkObj, idDictionaries):
 # so we can compute the amount of time spent within one tower range,
 # or the overlap of two people in the same tower rage.
 def makeCellTowerIntervals(subject):
-   events = list(zip(subject['locs'], subject['loc_ids']))
+   events = subject['locs']
    dt = convertDatetime
-   return [((dt(events[i][0][0]), dt(events[i+1][0][0])), events[i][1])
+   return [((dt(events[i][0]), dt(events[i+1][0])), events[i][1])
            for i in range(len(events) - 1) if events[i][1] > 0] # condition ensures there was signal
 
 
@@ -214,20 +215,32 @@ def dateIntervalOverlap(dtint1, dtint2):
 
 
 def listProximityEvents(intervals1, intervals2):
-   # just do a naive n^2 sweep with trivial optimizations
-   # as such, it takes quite a while to finish (mine's been going for hours
-   # with no end in sight... I may have to fix this)
-   events = []
+   if len(intervals1) == 0 or len(intervals2) == 0:
+      print("Found an empty interval list?")
+      return []
 
-   for dateInterval1, towerId1 in intervals1:
-      for dateInterval2, towerId2 in intervals2:
-         if dateInterval2[0] >= dateInterval1[1]:
-            break
+   D1, D2 = deque(intervals1), deque(intervals2)
+   events = deque()
+
+   print('Processing new pairs of intervals')
+   dateInterval1, towerId1 = D1.popleft()
+   dateInterval2, towerId2 = D2.popleft()
+   while len(D1) > 0 and len(D2) > 0:
+      if dateInterval2[0] >= dateInterval1[1]:
+         dateInterval1, towerId1 = D1.popleft()
+      elif dateInterval1[0] >= dateInterval2[1]:
+         dateInterval2, towerId2 = D2.popleft()
+      else:
+         if towerId1 == towerId2:
+            theOverlap = dateIntervalOverlap(dateInterval1, dateInterval2)
+            if (theOverlap[1] - theOverlap[0]).total_seconds() > 1:
+               events.append((theOverlap, towerId1))
+               #print('Found a match! %s, %s at tower %s' % (theOverlap[0], theOverlap[1], towerId1))
+
+         if dateInterval1[0] < dateInterval2[0]:
+            dateInterval1, towerId1 = D1.popleft()
          else:
-            if towerId1 == towerId2 and dateInterval2[1] > dateInterval1[0]:
-               theOverlap = dateIntervalOverlap(dateInterval1, dateInterval2)
-               if theOverlap is not None:
-                  events.append((theOverlap, towerId1))
+            dateInterval2, towerId2 = D2.popleft()
 
    return events
 
@@ -269,7 +282,7 @@ if __name__ == "__main__":
 
    #createFriendshipDataset(matlab_obj['network'][0][0], idDictionaries)
    #createPhoneCallDataset(idDictionaries)
-   #createCellTowerDataset(idDictionaries)
+   createCellTowerDataset(idDictionaries)
 
    print("Cleaning up...")
 
